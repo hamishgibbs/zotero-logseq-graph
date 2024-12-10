@@ -1,49 +1,63 @@
 import requests
 from datetime import datetime
 import zipfile
-import pydantic
+from pydantic import BaseModel, Field, validator
+from typing import Optional
 from bs4 import BeautifulSoup
 from io import BytesIO
 
-class ZoteroDocumentData(pydantic.BaseModel):
+class ZoteroDocumentData(BaseModel):
     title: str
-    abstractNote: str
+    abstract: Optional[str] = Field(None, alias='abstractNote')
     collections: list[str]
-    dateModified: str
+    mtime: str = Field(..., alias='dateModified')
 
-class ZoteroDocument(pydantic.BaseModel):
+class ZoteroDocument(BaseModel):
     key: str
     version: int
     data: ZoteroDocumentData
 
-class ZoteroAttachmentData(pydantic.BaseModel):
-    filename: str
+class ZoteroAttachmentData(BaseModel):
+    filename: Optional[str] = Field('')
+    mtime: str = Field(..., alias='dateModified')
 
-class ZoteroAttachment(pydantic.BaseModel):
+class ZoteroAttachment(BaseModel):
     key: str
     data: ZoteroAttachmentData
 
-class ZoteroAttachmentHighlightData(pydantic.BaseModel):
-    annotationText: str
-    dateModified: str
+class ZoteroAttachmentHighlightData(BaseModel):
+    text: str = Field(..., alias='annotationText')
+    mtime: str = Field(..., alias='dateModified')
 
-class ZoteroAttachmentHighlight(pydantic.BaseModel):
+    @validator('text', pre=True)
+    def trim_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+class ZoteroAttachmentHighlight(BaseModel):
     key: str
     data: ZoteroAttachmentHighlightData
 
-class ZoteroAttachmentNoteData(pydantic.BaseModel):
-    annotationComment: str
-    dateModified: str
+class ZoteroAttachmentNoteData(BaseModel):
+    text: str = Field(..., alias='annotationComment')
+    mtime: str = Field(..., alias='dateModified')
 
-class ZoteroAttachmentNote(pydantic.BaseModel):
+    @validator('text', pre=True)
+    def trim_text(cls, value: str) -> str:
+        if isinstance(value, str):
+            return value.strip()
+        return value
+
+class ZoteroAttachmentNote(BaseModel):
     key: str
     data: ZoteroAttachmentNoteData
 
-class ZoteroNoteData(pydantic.BaseModel):
-    note: str
-    dateModified: str
+class ZoteroNoteData(BaseModel):
+    text: str = Field(..., alias='note')
+    mtime: str = Field(..., alias='dateModified')
 
-class ZoteroNote(pydantic.BaseModel):
+class ZoteroNote(BaseModel):
     key: str
     data: ZoteroNoteData
 
@@ -68,8 +82,9 @@ class ZoteroClient:
     
     def get_document(self, key: str):
         document_json = self.get_item(key)
-        document = ZoteroDocument(**document_json)
-        return document
+        if document_json['data']['itemType'] != 'note':            
+            document = ZoteroDocument(**document_json)
+            return document
     
     def get_document_child_notes(self, parent_key: str):
         url = f"https://api.zotero.org/users/{self.zotero_user_id}/items/{parent_key}/children?itemType=note"
@@ -87,11 +102,11 @@ class ZoteroClient:
     
     def get_file(self, item_key: str):
         url = f"https://api.zotero.org/users/{self.zotero_user_id}/items/{item_key}/file"
-        with self.session.get(url, headers={"Authorization": f"Bearer {self.zotero_api_key}",
+        with requests.get(url, headers={"Authorization": f"Bearer {self.zotero_api_key}",
                                                     "Accept": "application/json"}) as response:
             response.raise_for_status()
             if 'application/zip' in response.headers.get('Content-Type', ''):
-                return self._process_zip_file(response.read())
+                return self._process_zip_file(response.content)
             else:
                 raise ValueError("Expected HTML file, received: {}".format(response.headers['Content-Type']))
     
@@ -130,7 +145,7 @@ class ZoteroClient:
                     notes.append(ZoteroAttachmentNote(**note))
             return notes
     
-    def get_attachment_annotations_kindle(self, parent_key, notebook):
+    def get_attachment_annotations_kindle(self, parent_key, notebook, mtime):
         soup = BeautifulSoup(notebook, 'html.parser')
         text_elements = soup.find_all('div', class_='noteText')
         highlights = []
@@ -140,7 +155,7 @@ class ZoteroClient:
                     key=f"{parent_key}-highlight-{i}",
                     data=ZoteroAttachmentHighlightData(
                         annotationText=highlight.get_text(),
-                        dateModified=datetime.now().isoformat()
+                        dateModified=mtime
                     )
                 )
             )
@@ -158,7 +173,10 @@ class ZoteroClient:
                 notes.append(self.get_attachment_notes_pdf(attachment.key))
             elif attachment.data.filename.endswith("Notebook.html"):
                 notebook = self.get_file(attachment.key)
-                annotations.append(self.get_attachment_annotations_kindle(attachment.key, notebook))
+                annotations.append(self.get_attachment_annotations_kindle(attachment.key, notebook, attachment.data.mtime))
         
+        annotations = [item for sublist in annotations for item in sublist]
+        notes = [item for sublist in notes for item in sublist]
+
         return annotations, notes
 

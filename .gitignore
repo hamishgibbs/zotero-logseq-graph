@@ -3,3 +3,5 @@ tests/data
 __pycache__
 .env
 .vscode
+data
+graph

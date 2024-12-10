@@ -8,7 +8,6 @@ from src.zotero_client import (
 
 load_dotenv()
 
-
 def test_get_item_versions():
     zotero_client = ZoteroClient(os.getenv('ZOTERO_USER_ID'), os.getenv('ZOTERO_API_KEY'))
     item_versions = zotero_client.get_item_versions()
@@ -49,4 +48,9 @@ def test_get_attachment_annotations_pdf():
     assert type(annotations) == list
     assert type(notes) == list
     
-    
+def test_get_attachment_annotations_kindle():
+    zotero_client = ZoteroClient(os.getenv('ZOTERO_USER_ID'), os.getenv('ZOTERO_API_KEY'))
+    parent_key = 'GP7D5BSE'
+    annotations, notes = zotero_client.get_attachment_annotations(parent_key)
+    assert type(annotations) == list
+    assert type(notes) == list
