@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from jinja2 import Environment, FileSystemLoader
 from typing import Any
 from document_client import Document, DocumentNote
+from keyword_client import KeywordClient
 from pydantic import BaseModel
 from typing import List
 
@@ -20,9 +21,10 @@ def get_ordinal_suffix(day: int) -> str:
         return {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
 
 class GraphClient:
-    def __init__(self, data_path: str, graph_path: str, template_path: str):
+    def __init__(self, data_path: str, graph_path: str, template_path: str, keyword_client: KeywordClient):
         self.data_path = data_path
         self.graph_path = graph_path
+        self.keyword_client = keyword_client
         self.env = Environment(loader=FileSystemLoader(template_path))
 
     def sanitize(self, text: str) -> str:
@@ -44,8 +46,15 @@ class GraphClient:
     def write_document_page(self, key: str):
         with open(f"{self.data_path}/{key}.json") as file:
             document = Document.parse_obj(json.load(file))
+
+        document.abstract = self.keyword_client.highlight_keywords(document.abstract)
+
         template = self.env.get_template('document_page_template.md')
         annotations = self.get_document_annotations(document)
+
+        for annotation in annotations:
+            annotation.text = self.keyword_client.highlight_keywords(annotation.text)
+
         page_content = template.render(document=document, annotations=annotations)
 
         if len(annotations) > 0:           
@@ -87,6 +96,7 @@ class GraphClient:
 if __name__ == "__main__":
     # Backfill journal pages for the past 3 months with a query for notes and highlights
     load_dotenv()
-    gc = GraphClient(os.getenv('DATA_PATH'), os.getenv('GRAPH_PATH'), os.getenv('TEMPLATE_PATH'))
+    keyword_client = KeywordClient(os.getenv('DATA_PATH'), os.getenv('KEYWORD_PATH'))
+    gc = GraphClient(os.getenv('DATA_PATH'), os.getenv('GRAPH_PATH'), os.getenv('TEMPLATE_PATH'), keyword_client)
     gc.sync_graph()
     gc.backfill_journal_pages()

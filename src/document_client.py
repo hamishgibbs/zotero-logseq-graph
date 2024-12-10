@@ -93,6 +93,7 @@ class DocumentClient:
         os.remove(f"{self.data_path}/{key}.json")        
 
     def update_document(self, key: str):
+        print(f"Updating document {key}")
         self.delete_document(key)
         self.add_document(key)
     
@@ -108,7 +109,7 @@ class DocumentClient:
                         self.update_document(key)
             except FileNotFoundError:
                 self.add_document(key)
-            print(f"Synced {i} of {n_keys} documents ({i/n_keys*100:.2f}%)")
+            #print(f"Synced {i} of {n_keys} documents ({i/n_keys*100:.2f}%)")
             i += 1
         
     def write_document_page(self, document: ZoteroDocument):
