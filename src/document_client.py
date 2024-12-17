@@ -12,10 +12,14 @@ from pydantic import BaseModel
 from typing import List, Optional
 
 class DocumentHighlight(BaseModel):
+    key: str
+    version: int
     text: str
     mtime: str
 
 class DocumentNote(BaseModel):
+    key: str
+    version: int
     text: str
     mtime: str
 
@@ -23,7 +27,6 @@ class Document(BaseModel):
     key: str
     version: int
     title: str
-    abstract: Optional[str]
     collections: list[str]
     annotations: list[DocumentHighlight]
     notes: list[DocumentNote]
@@ -40,6 +43,7 @@ class DocumentClient:
         lines = text.split('\n')
         return [ZoteroNote(
             key=note.key,
+            version=note.version,
             data=ZoteroNoteData(
                 note=line,
                 dateModified=note.data.mtime
@@ -51,14 +55,24 @@ class DocumentClient:
         zotero_doc: ZoteroDocument,
         zotero_highlights: List[ZoteroAttachmentHighlight],
         zotero_notes: List[ZoteroNote]) -> Document:
-        
+
         highlights = [
-            DocumentHighlight(**highlight.data.dict())
+            DocumentHighlight(
+                key=highlight.key,
+                version=highlight.version,
+                text=highlight.data.text,
+                mtime=highlight.data.mtime
+            )
             for highlight in zotero_highlights
         ]
 
         notes = [
-            DocumentNote(**note.data.dict())
+            DocumentNote(
+                key=note.key,
+                version=note.version,
+                text=note.data.text,
+                mtime=note.data.mtime
+            )
             for note in zotero_notes
         ]
 
@@ -66,7 +80,6 @@ class DocumentClient:
             key=zotero_doc.key,
             version=zotero_doc.version,
             title=zotero_doc.data.title,
-            abstract=zotero_doc.data.abstract,
             collections=zotero_doc.data.collections,
             annotations=highlights,
             notes=notes
@@ -87,7 +100,7 @@ class DocumentClient:
         document = self.document_from_zotero(zotero_doc, zotero_highlights, zotero_notes)
 
         with open(f"{self.data_path}/{key}.json", "w") as f:
-            f.write(document.json())
+            f.write(document.model_dump_json())
         
     def delete_document(self, key: str):
         os.remove(f"{self.data_path}/{key}.json")        
@@ -98,19 +111,26 @@ class DocumentClient:
         self.add_document(key)
     
     def sync_documents(self):
-        versions = self.zotero_client.get_item_versions()
-        n_keys = len(versions)
-        i = 0
-        for key, version in versions.items():
-            try:
-                with open(f"{self.data_path}/{key}.json") as f:
-                    document = Document.parse_raw(f.read())
-                    if document.version != version:
-                        self.update_document(key)
-            except FileNotFoundError:
-                self.add_document(key)
-            #print(f"Synced {i} of {n_keys} documents ({i/n_keys*100:.2f}%)")
-            i += 1
+        zotero_versions = self.zotero_client.get_item_versions()
+        document_versions = self.get_item_versions()
+
+        # Add any new top-level items from Zotero
+        # Delete any old top-level items from data if missing from Zotero
+        # Update item if any item or child is newer in zotero_versions than document_versions
+
+        #n_keys = len(versions)
+        #i = 0
+        #for key, version in versions.items():
+        #    try:
+        #        with open(f"{self.data_path}/{key}.json") as f:
+        #            print(key)
+        #            document = Document.model_validate_json(f.read())
+        #            if document.version != version:
+        #                self.update_document(key)
+        #    except FileNotFoundError:
+        #        self.add_document(key)
+        #    print(f"Synced {i} of {n_keys} documents ({i/n_keys*100:.2f}%)")
+        #    i += 1
         
     def write_document_page(self, document: ZoteroDocument):
         pass

@@ -47,8 +47,6 @@ class GraphClient:
         with open(f"{self.data_path}/{key}.json") as file:
             document = Document.parse_obj(json.load(file))
 
-        document.abstract = self.keyword_client.highlight_keywords(document.abstract)
-
         template = self.env.get_template('document_page_template.md')
         annotations = self.get_document_annotations(document)
 

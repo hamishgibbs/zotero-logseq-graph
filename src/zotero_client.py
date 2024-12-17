@@ -1,14 +1,13 @@
 import requests
 from datetime import datetime
 import zipfile
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional
 from bs4 import BeautifulSoup
 from io import BytesIO
 
 class ZoteroDocumentData(BaseModel):
     title: str
-    abstract: Optional[str] = Field(None, alias='abstractNote')
     collections: list[str]
     mtime: str = Field(..., alias='dateModified')
 
@@ -18,6 +17,7 @@ class ZoteroDocument(BaseModel):
     data: ZoteroDocumentData
 
 class ZoteroAttachmentData(BaseModel):
+    version: int
     filename: Optional[str] = Field('')
     mtime: str = Field(..., alias='dateModified')
 
@@ -29,7 +29,7 @@ class ZoteroAttachmentHighlightData(BaseModel):
     text: str = Field(..., alias='annotationText')
     mtime: str = Field(..., alias='dateModified')
 
-    @validator('text', pre=True)
+    @field_validator('text')
     def trim_text(cls, value: str) -> str:
         if isinstance(value, str):
             return value.strip()
@@ -37,13 +37,14 @@ class ZoteroAttachmentHighlightData(BaseModel):
 
 class ZoteroAttachmentHighlight(BaseModel):
     key: str
+    version: int
     data: ZoteroAttachmentHighlightData
 
 class ZoteroAttachmentNoteData(BaseModel):
     text: str = Field(..., alias='annotationComment')
     mtime: str = Field(..., alias='dateModified')
 
-    @validator('text', pre=True)
+    @field_validator('text')
     def trim_text(cls, value: str) -> str:
         if isinstance(value, str):
             return value.strip()
@@ -51,6 +52,7 @@ class ZoteroAttachmentNoteData(BaseModel):
 
 class ZoteroAttachmentNote(BaseModel):
     key: str
+    version: int
     data: ZoteroAttachmentNoteData
 
 class ZoteroNoteData(BaseModel):
@@ -59,6 +61,7 @@ class ZoteroNoteData(BaseModel):
 
 class ZoteroNote(BaseModel):
     key: str
+    version: int
     data: ZoteroNoteData
 
 class ZoteroClient:
@@ -67,7 +70,7 @@ class ZoteroClient:
         self.zotero_api_key = zotero_api_key
     
     def get_item_versions(self):
-        url = f"https://api.zotero.org/users/{self.zotero_user_id}/items/top?format=versions"
+        url = f"https://api.zotero.org/users/{self.zotero_user_id}/items?format=versions"
         with requests.get(url, headers={"Authorization": f"Bearer {self.zotero_api_key}",
                                                   "Accept": "application/json"}) as response:
             response.raise_for_status()
@@ -145,7 +148,7 @@ class ZoteroClient:
                     notes.append(ZoteroAttachmentNote(**note))
             return notes
     
-    def get_attachment_annotations_kindle(self, parent_key, notebook, mtime):
+    def get_attachment_annotations_kindle(self, parent_key, parent_version, notebook, mtime):
         soup = BeautifulSoup(notebook, 'html.parser')
         text_elements = soup.find_all('div', class_='noteText')
         highlights = []
@@ -153,6 +156,7 @@ class ZoteroClient:
             highlights.append(
                 ZoteroAttachmentHighlight(
                     key=f"{parent_key}-highlight-{i}",
+                    version=parent_version,
                     data=ZoteroAttachmentHighlightData(
                         annotationText=highlight.get_text(),
                         dateModified=mtime
@@ -173,7 +177,7 @@ class ZoteroClient:
                 notes.append(self.get_attachment_notes_pdf(attachment.key))
             elif attachment.data.filename.endswith("Notebook.html"):
                 notebook = self.get_file(attachment.key)
-                annotations.append(self.get_attachment_annotations_kindle(attachment.key, notebook, attachment.data.mtime))
+                annotations.append(self.get_attachment_annotations_kindle(attachment.key, attachment.data.version, notebook, attachment.data.mtime))
         
         annotations = [item for sublist in annotations for item in sublist]
         notes = [item for sublist in notes for item in sublist]
