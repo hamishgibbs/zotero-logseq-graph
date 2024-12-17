@@ -32,8 +32,6 @@ class KeywordClient:
             document = Document.model_validate(json.load(file))
         
         corpus = []
-        if document.abstract:
-            corpus.append(document.abstract)
         
         for note in document.notes:
             corpus.append(note.text)
