@@ -9,13 +9,13 @@ from document_client import Document
 
 class KeywordClient:
 
-    def __init__(self, data_path: str, keyword_path: str):
+    def __init__(self, data_path: str, keywords: list = []):
         self.data_path = data_path
-        self.keyword_path = keyword_path
 
-        # Load keywords from keywords.txt
-        with open(f"{self.keyword_path}/keywords.txt") as file:
-            self.keywords = file.read().splitlines()
+        if keywords:
+            self.keywords = keywords
+        else:
+            self.keywords = self.detect_keywords()
     
     def extract_named_entities(self, corpus):
         nlp = spacy.load("en_core_web_sm")
@@ -45,7 +45,7 @@ class KeywordClient:
 
     def detect_keywords(self):
         '''
-        Extracts named entities from the corpus of documents
+        Extract named entities from the corpus of documents
         '''
         corpus = []
         for file in os.listdir(self.data_path):
@@ -60,10 +60,7 @@ class KeywordClient:
         # Select entities mentioned more than once
         named_entity_counts = {k: v for k, v in named_entity_counts.items() if v > 1}
 
-        # Output named entities to a file (not keywords.txt to prevent overwriting manually curated keywords)
-        with open(f"{self.keyword_path}/ner_results.txt", 'w') as file:
-            for k, _ in named_entity_counts.items():
-                file.write(f"{k}\n")
+        return set(named_entity_counts.keys())
     
     def highlight_keywords(self, text):
         try:
@@ -82,8 +79,12 @@ class KeywordClient:
         pass
 
 if __name__ == "__main__":
+    # Output detected keywords to a file
     load_dotenv()
-    keyword_client = KeywordClient(data_path=os.getenv('DATA_PATH'), keyword_path=os.getenv('KEYWORD_PATH'))
-    keyword_client.detect_keywords()
+    keyword_client = KeywordClient(data_path=os.getenv('DATA_PATH'))
+    keywords = keyword_client.detect_keywords()
+    with open(f"{os.getenv('KEYWORD_PATH')}/ner_results.txt", 'w') as file:
+        for k in keywords:
+            file.write(f"{k}\n")
 
 
